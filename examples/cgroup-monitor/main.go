@@ -66,23 +66,23 @@ func main() {
 func (p *plugin) Configure(ctx context.Context, config, runtime, version string) (api.EventMask, error) {
 	log.Infof("cgroup-monitor plugin starting...")
 	log.Infof("runtime: %s, version: %s", runtime, version)
-	
+
 	// Subscribe to container lifecycle events
 	return api.MustParseEventMask("RunPodSandbox", "CreateContainer", "StartContainer"), nil
 }
 
 func (p *plugin) Synchronize(ctx context.Context, pods []*api.PodSandbox, containers []*api.Container) ([]*api.ContainerUpdate, error) {
 	log.Infof("synchronizing with %d pods and %d containers", len(pods), len(containers))
-	
+
 	// Monitor existing pods and containers
 	for _, pod := range pods {
 		p.monitorPodCgroups(pod)
 	}
-	
+
 	for _, container := range containers {
 		p.monitorContainerCgroups(container)
 	}
-	
+
 	return nil, nil
 }
 
@@ -108,14 +108,14 @@ func (p *plugin) StartContainer(ctx context.Context, pod *api.PodSandbox, contai
 func (p *plugin) monitorPodCgroups(pod *api.PodSandbox) {
 	// Get the relative cgroups path (old way)
 	relativePath := pod.GetLinux().GetCgroupsPath()
-	
+
 	// Get the absolute cgroups path (new way)
-	absolutePath := pod.GetCgroup2AbsPath()
-	
+	absolutePath := pod.GetCgroupsV2AbsPath()
+
 	log.Infof("Pod %s cgroup paths:", pod.Name)
 	log.Infof("  Relative: %s", relativePath)
 	log.Infof("  Absolute: %s", absolutePath)
-	
+
 	// Check if the cgroup directory exists and read controllers
 	if absolutePath != "" {
 		p.readCgroupControllers(absolutePath, "pod", pod.Name)
@@ -127,14 +127,14 @@ func (p *plugin) monitorPodCgroups(pod *api.PodSandbox) {
 func (p *plugin) monitorContainerCgroups(container *api.Container) {
 	// Get the relative cgroups path (old way)
 	relativePath := container.GetLinux().GetCgroupsPath()
-	
+
 	// Get the absolute cgroups path (new way)
-	absolutePath := container.GetCgroup2AbsPath()
-	
+	absolutePath := container.GetCgroupsV2AbsPath()
+
 	log.Infof("Container %s cgroup paths:", container.Name)
 	log.Infof("  Relative: %s", relativePath)
 	log.Infof("  Absolute: %s", absolutePath)
-	
+
 	// Check if the cgroup directory exists and read controllers
 	if absolutePath != "" {
 		p.readCgroupControllers(absolutePath, "container", container.Name)
@@ -160,7 +160,7 @@ func (p *plugin) checkCgroupMemoryUsage(cgroupPath, resourceType, name string) {
 	} else {
 		log.Debugf("Could not read memory usage for %s %s: %v", resourceType, name, err)
 	}
-	
+
 	memoryMaxFile := filepath.Join(cgroupPath, "memory.max")
 	if data, err := os.ReadFile(memoryMaxFile); err == nil {
 		log.Infof("%s %s memory limit: %s", resourceType, name, string(data))
