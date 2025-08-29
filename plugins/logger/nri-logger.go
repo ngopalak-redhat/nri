@@ -31,12 +31,13 @@ import (
 )
 
 type config struct {
-	LogFile       string   `json:"logFile"`
-	Events        []string `json:"events"`
-	AddAnnotation string   `json:"addAnnotation"`
-	SetAnnotation string   `json:"setAnnotation"`
-	AddEnv        string   `json:"addEnv"`
-	SetEnv        string   `json:"setEnv"`
+	LogFile          string   `json:"logFile"`
+	Events           []string `json:"events"`
+	AddAnnotation    string   `json:"addAnnotation"`
+	SetAnnotation    string   `json:"setAnnotation"`
+	AddEnv           string   `json:"addEnv"`
+	SetEnv           string   `json:"setEnv"`
+	EnableCGroupsLog bool     `json:"enableCGroupsLog"`
 }
 
 type plugin struct {
@@ -90,6 +91,10 @@ func (p *plugin) Shutdown() {
 
 func (p *plugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) error {
 	dump("RunPodSandbox", "pod", pod)
+	if cfg.EnableCGroupsLog {
+		log.Infof("PodSandbox CGroups relative path=%s, absolute path=%s",
+			pod.Linux.CgroupsPath, pod.GetCgroupsV2AbsPath())
+	}
 	return nil
 }
 
@@ -132,7 +137,10 @@ func (p *plugin) CreateContainer(_ context.Context, pod *api.PodSandbox, contain
 		adjust.RemoveEnv(cfg.SetEnv)
 		adjust.AddEnv(cfg.SetEnv, fmt.Sprintf("logger-pid-%d", os.Getpid()))
 	}
-
+	if cfg.EnableCGroupsLog {
+		log.Infof("Container CGroups relative path=%s, absolute path=%s",
+			container.Linux.CgroupsPath, container.GetCgroupsV2AbsPath())
+	}
 	return adjust, nil, nil
 }
 
@@ -235,6 +243,7 @@ func main() {
 	flag.StringVar(&cfg.SetAnnotation, "set-annotation", "", "set this annotation on containers")
 	flag.StringVar(&cfg.AddEnv, "add-env", "", "add this environment variable for containers")
 	flag.StringVar(&cfg.SetEnv, "set-env", "", "set this environment variable for containers")
+	flag.BoolVar(&cfg.EnableCGroupsLog, "enable-cgroups-log", false, "enable cgroups log")
 	flag.Parse()
 
 	if cfg.LogFile != "" {
