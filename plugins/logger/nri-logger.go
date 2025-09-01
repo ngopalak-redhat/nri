@@ -92,8 +92,8 @@ func (p *plugin) Shutdown() {
 func (p *plugin) RunPodSandbox(_ context.Context, pod *api.PodSandbox) error {
 	dump("RunPodSandbox", "pod", pod)
 	if cfg.EnableCGroupsLog {
-		log.Infof("PodSandbox CGroups relative path=%s, absolute path=%s",
-			pod.Linux.CgroupsPath, pod.GetCgroupsV2AbsPath())
+		log.WithFields(logrus.Fields{"relativePath": pod.Linux.CgroupsPath,
+			"absolutePath": pod.GetCgroupsV2AbsPath()}).Info("PodSandbox CGroups")
 	}
 	return nil
 }
@@ -138,8 +138,8 @@ func (p *plugin) CreateContainer(_ context.Context, pod *api.PodSandbox, contain
 		adjust.AddEnv(cfg.SetEnv, fmt.Sprintf("logger-pid-%d", os.Getpid()))
 	}
 	if cfg.EnableCGroupsLog {
-		log.Infof("Container CGroups relative path=%s, absolute path=%s",
-			container.Linux.CgroupsPath, container.GetCgroupsV2AbsPath())
+		log.WithFields(logrus.Fields{"relativePath": container.Linux.CgroupsPath,
+			"absolutePath": container.GetCgroupsV2AbsPath()}).Info("Container CGroups")
 	}
 	return adjust, nil, nil
 }
