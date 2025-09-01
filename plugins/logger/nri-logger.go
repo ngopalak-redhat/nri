@@ -254,6 +254,9 @@ func main() {
 		log.SetOutput(f)
 	}
 
+	log.Infof("got configuration data: %+v", cfg)
+	log.Infof("EnableCGroupsLog: %v", cfg.EnableCGroupsLog)
+
 	if cfg.EnableCGroupsLog {
 		log.Info("CGroups logging enabled")
 	}
