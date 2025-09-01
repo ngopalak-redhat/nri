@@ -41,6 +41,13 @@ BUILD_PATH    := $(RESOLVED_PWD)/build
 BIN_PATH      := $(BUILD_PATH)/bin
 COVERAGE_PATH := $(BUILD_PATH)/coverage
 
+# Docker plugin
+DOCKERFILE ?= plugins/Dockerfile
+
+export CONTAINER_RUNTIME ?= $(if $(shell which podman 2>/dev/null),podman,docker)
+VERSION := $(shell cat VERSION)
+IMAGE ?= plugin:latest
+
 PLUGINS := \
 	$(BIN_PATH)/logger \
 	$(BIN_PATH)/device-injector \
@@ -193,3 +200,10 @@ install-protoc-dependencies:
 
 install-ginkgo:
 	$(Q)$(GO_INSTALL) -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+
+#
+# Build docker plugin
+#
+.PHONY: image
+image: ## Build the container image
+	$(CONTAINER_RUNTIME) build -f $(DOCKERFILE) --build-arg version=$(VERSION) --build-arg PLUGIN=logger -t $(IMAGE) .
