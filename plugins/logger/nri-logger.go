@@ -254,6 +254,10 @@ func main() {
 		log.SetOutput(f)
 	}
 
+	if cfg.EnableCGroupsLog {
+		log.Info("CGroups logging enabled")
+	}
+
 	if pluginIdx != "" {
 		opts = append(opts, stub.WithPluginIdx(pluginIdx))
 	}
