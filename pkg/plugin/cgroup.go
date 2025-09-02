@@ -128,27 +128,86 @@ func resolveCgroupPath(cgroupRoot, cgroupPath string) string {
 
 // isSystemdPath checks if the path looks like a systemd slice path
 func isSystemdPath(path string) bool {
-	// Systemd paths typically contain .slice or have : notation
-	return strings.Contains(path, ".slice") || strings.Contains(path, ":")
+	// Systemd paths have : notation OR contain .slice but not as nested directory paths
+	// e.g., "kubepods-burstable-pod123.slice/crio:container" is systemd
+	// but "kubepods.slice/kubepods-burstable.slice/..." is cgroupfs
+	if strings.Contains(path, ":") {
+		return true
+	}
+	
+	// Check if it has .slice in a way that suggests systemd (not cgroupfs)
+	// Systemd paths typically have slice names without nested directory structure
+	if strings.Contains(path, ".slice") {
+		parts := strings.Split(path, "/")
+		// If we have multiple parts and multiple contain .slice, it's likely cgroupfs
+		sliceCount := 0
+		for _, part := range parts {
+			if strings.Contains(part, ".slice") {
+				sliceCount++
+			}
+		}
+		// If there's only one .slice component, it's likely systemd
+		// If there are multiple, it's likely cgroupfs hierarchical path
+		return sliceCount == 1
+	}
+	
+	return false
 }
 
 // convertSystemdPath converts systemd slice notation to filesystem path
 func convertSystemdPath(cgroupRoot, systemdPath string) string {
 	// Convert systemd slice notation to filesystem path
-	// Example: "system.slice/containerd.service/kubepods-burstable-pod123.slice:cri-containerd:container456"
-	// becomes: "/sys/fs/cgroup/system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456"
+	// Example: "kubepods-besteffort-pod123.slice/crio:container456"
+	// becomes: "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
 
-	parts := strings.Split(systemdPath, ":")
-	if len(parts) > 1 {
-		// Handle the case with colons - the first part is the slice hierarchy
-		slicePath := parts[0]
+	parts := strings.Split(systemdPath, "/")
+	var pathComponents []string
 
-		// Join the remaining parts with colons to form the final component
-		finalComponent := strings.Join(parts[1:], ":")
-
-		return filepath.Join(cgroupRoot, slicePath, finalComponent)
+	for _, part := range parts {
+		if strings.Contains(part, ":") {
+			// Handle colon-separated components (like "crio:container456")
+			colonParts := strings.Split(part, ":")
+			sliceName := colonParts[0]
+			containerName := strings.Join(colonParts[1:], ":")
+			// Convert colons to dashes in container name
+			containerName = strings.ReplaceAll(containerName, ":", "-")
+			pathComponents = append(pathComponents, sliceName+"-"+containerName)
+		} else if strings.HasSuffix(part, ".slice") {
+			// Handle slice hierarchy expansion
+			expandedSlices := expandSliceHierarchy(part)
+			pathComponents = append(pathComponents, expandedSlices...)
+		} else {
+			// Regular path component
+			pathComponents = append(pathComponents, part)
+		}
 	}
 
-	// No colons found, treat as regular path
-	return filepath.Join(cgroupRoot, systemdPath)
+	return filepath.Join(cgroupRoot, filepath.Join(pathComponents...))
+}
+
+// expandSliceHierarchy expands a systemd slice name into its hierarchical components
+// Example: "kubepods-besteffort-pod123.slice" -> ["kubepods.slice", "kubepods-besteffort.slice", "kubepods-besteffort-pod123.slice"]
+func expandSliceHierarchy(sliceName string) []string {
+	if !strings.HasSuffix(sliceName, ".slice") {
+		return []string{sliceName}
+	}
+
+	// Remove .slice suffix
+	baseName := strings.TrimSuffix(sliceName, ".slice")
+	
+	// Split by dashes to get hierarchy components
+	parts := strings.Split(baseName, "-")
+	
+	var slices []string
+	var currentSlice strings.Builder
+	
+	for i, part := range parts {
+		if i > 0 {
+			currentSlice.WriteString("-")
+		}
+		currentSlice.WriteString(part)
+		slices = append(slices, currentSlice.String()+".slice")
+	}
+	
+	return slices
 }
