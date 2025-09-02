@@ -44,7 +44,12 @@ func GetPodCgroupsV2AbsPath(pod *api.PodSandbox) string {
 	}
 
 	cgroupPath := pod.Linux.CgroupsPath
-	return getCGroupsV2PathForPod(cgroupPath)
+	
+	// For pods, we need to check the runtime type to determine if .scope should be added
+	runtime := detectContainerRuntime(cgroupPath)
+	isPodScopeRequired := runtime != "crio"
+	
+	return getCGroupsV2PathForPodWithRuntime(cgroupPath, isPodScopeRequired)
 }
 
 // Helper functions
@@ -66,8 +71,8 @@ func getCGroupsV2PathForContainer(cgroupPath string) string {
 	return resolvedPath
 }
 
-// getCGroupsV2PathForPod helper for pod paths
-func getCGroupsV2PathForPod(cgroupPath string) string {
+// getCGroupsV2PathForPodWithRuntime helper for pod paths with runtime detection
+func getCGroupsV2PathForPodWithRuntime(cgroupPath string, shouldAddScope bool) string {
 	if filepath.IsAbs(cgroupPath) {
 		return cgroupPath
 	}
@@ -79,7 +84,7 @@ func getCGroupsV2PathForPod(cgroupPath string) string {
 	}
 
 	// Try to resolve the path using different cgroup drivers
-	resolvedPath := resolveCgroupPath(cgroupV2Root, cgroupPath, false) // false = isPod
+	resolvedPath := resolveCgroupPath(cgroupV2Root, cgroupPath, shouldAddScope)
 	return resolvedPath
 }
 
@@ -266,4 +271,21 @@ func expandSliceHierarchy(sliceName string) []string {
 	}
 	
 	return slices
+}
+
+// detectContainerRuntime detects the container runtime from the cgroup path
+func detectContainerRuntime(cgroupPath string) string {
+	// Check for common runtime patterns in the cgroup path
+	if strings.Contains(cgroupPath, "crio") || strings.Contains(cgroupPath, "cri-o") {
+		return "crio"
+	}
+	if strings.Contains(cgroupPath, "containerd") || strings.Contains(cgroupPath, "cri-containerd") {
+		return "containerd"
+	}
+	if strings.Contains(cgroupPath, "docker") {
+		return "docker"
+	}
+	
+	// Default to containerd if we can't detect the runtime
+	return "containerd"
 }

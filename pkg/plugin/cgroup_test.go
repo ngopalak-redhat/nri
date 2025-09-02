@@ -219,6 +219,39 @@ func TestGetPodCgroupsV2AbsPath(t *testing.T) {
 			expected:    "/sys/fs/cgroup/kubepods/besteffort/pod123",
 			description: "should handle besteffort QoS class",
 		},
+		{
+			name: "crio pod with systemd path - no .scope suffix",
+			pod: &api.PodSandbox{
+				Id: "test-pod",
+				Linux: &api.LinuxPodSandbox{
+					CgroupsPath: "kubepods-besteffort-pod123.slice:crio:container456",
+				},
+			},
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456",
+			description: "should handle crio pod without .scope suffix",
+		},
+		{
+			name: "containerd pod with systemd path - adds .scope suffix",
+			pod: &api.PodSandbox{
+				Id: "test-pod",
+				Linux: &api.LinuxPodSandbox{
+					CgroupsPath: "system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456",
+				},
+			},
+			expected:    "/sys/fs/cgroup/system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456.scope",
+			description: "should handle containerd pod with .scope suffix",
+		},
+		{
+			name: "docker pod with systemd path - adds .scope suffix",
+			pod: &api.PodSandbox{
+				Id: "test-pod",
+				Linux: &api.LinuxPodSandbox{
+					CgroupsPath: "docker.slice:docker:container123",
+				},
+			},
+			expected:    "/sys/fs/cgroup/docker.slice/docker-container123.scope",
+			description: "should handle docker pod with .scope suffix",
+		},
 	}
 
 	for _, tt := range tests {
@@ -434,6 +467,61 @@ func TestExpandSliceHierarchy(t *testing.T) {
 				if result[i] != expected {
 					t.Errorf("expandSliceHierarchy(%s)[%d] = %s, expected %s", tt.sliceName, i, result[i], expected)
 				}
+			}
+		})
+	}
+}
+
+func TestDetectContainerRuntime(t *testing.T) {
+	tests := []struct {
+		name        string
+		cgroupPath  string
+		expected    string
+		description string
+	}{
+		{
+			name:        "crio path",
+			cgroupPath:  "kubepods-besteffort-pod123.slice:crio:container456",
+			expected:    "crio",
+			description: "should detect crio runtime from path",
+		},
+		{
+			name:        "cri-o path",
+			cgroupPath:  "kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-o-container456.scope",
+			expected:    "crio",
+			description: "should detect crio runtime from cri-o pattern",
+		},
+		{
+			name:        "containerd path",
+			cgroupPath:  "system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456",
+			expected:    "containerd",
+			description: "should detect containerd runtime from path",
+		},
+		{
+			name:        "cri-containerd path",
+			cgroupPath:  "kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456.scope",
+			expected:    "containerd",
+			description: "should detect containerd runtime from cri-containerd pattern",
+		},
+		{
+			name:        "docker path",
+			cgroupPath:  "docker/container123",
+			expected:    "docker",
+			description: "should detect docker runtime from path",
+		},
+		{
+			name:        "unknown path defaults to containerd",
+			cgroupPath:  "kubepods/burstable/pod123/container456",
+			expected:    "containerd",
+			description: "should default to containerd for unknown patterns",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectContainerRuntime(tt.cgroupPath)
+			if result != tt.expected {
+				t.Errorf("detectContainerRuntime(%s) = %s, expected %s. %s", tt.cgroupPath, result, tt.expected, tt.description)
 			}
 		})
 	}
