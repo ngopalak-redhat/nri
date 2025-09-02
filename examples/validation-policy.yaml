@@ -1,0 +1,141 @@
+# NRI Validation Policy Example
+# This implements the policy structure you specified
+
+apiVersion: nri.containerd.io/v1alpha1
+kind: NRIValidationPolicy
+metadata:
+  name: cluster-policy
+spec:
+  defaultDeny: true  # Opt-in model
+
+  rules:
+    - namespaces: ["dev-*"]
+      # mutations: ["ulimit", "resources", "environment"] - For future to act based on what type of resource is changed - not now
+      plugins: ["*"]
+      subjects:
+        - kind: User
+          name: "developer-team"
+        - kind: ServiceAccount
+          name: "dev-runner"
+
+    - namespaces: ["production"]
+      # mutations: ["resources"] - For future to act based on what type of resource is changed - not now
+      plugins: ["cpu-manager", "memory-manager"]
+      subjects:
+        - kind: Group
+          name: "platform-team"
+
+---
+# Extended configuration for restrictions (technical controls)
+apiVersion: nri.containerd.io/v1alpha1
+kind: NRIRestrictionsConfig
+metadata:
+  name: cluster-restrictions
+spec:
+  defaultAction: allow
+  
+  # Global restrictions that apply to all plugins
+  globalRestrictions:
+    - action: deny
+      capabilities:
+        - namespaces    # Block all namespace modifications
+        - seccomp      # Block seccomp policy changes
+        - hooks        # Block OCI hook injection
+  
+  # Global pod restrictions
+  globalPodRestrictions:
+    - action: deny
+      selector:
+        namespaces: ["kube-system", "kube-public"]
+        labels:
+          "security.containerd.io/protected": "true"
+  
+  # Plugin-specific restrictions
+  pluginRestrictions:
+    - pluginPattern: "untrusted-*"
+      mutationRestrictions:
+        - action: allow
+          capabilities:
+            - annotations
+            - env
+            - args
+      podRestrictions:
+        - action: allow
+          selector:
+            namespaces: ["sandbox-*", "test-*"]
+    
+    - pluginPattern: "cpu-manager"
+      mutationRestrictions:
+        - action: allow
+          capabilities:
+            - cpu
+            - resources
+      podRestrictions:
+        - action: deny
+          selector:
+            labels:
+              "workload.type": "system"
+    
+    - pluginPattern: "memory-manager"
+      mutationRestrictions:
+        - action: allow
+          capabilities:
+            - memory
+            - resources
+    
+    - pluginPattern: "network-*"
+      mutationRestrictions:
+        - action: allow
+          capabilities:
+            - annotations
+            - env
+            - devices
+      podRestrictions:
+        - action: allow
+          selector:
+            namespaces: ["default", "production", "dev-*"]
+            names: ["*-network-*"]
+
+---
+# Example of how this could be used in practice
+apiVersion: nri.containerd.io/v1alpha1
+kind: NRIValidationPolicy
+metadata:
+  name: security-policy
+spec:
+  defaultDeny: true
+  
+  rules:
+    # Development teams can use basic plugins in dev namespaces
+    - namespaces: ["dev-*", "staging-*"]
+      plugins: ["logger", "env-injector", "annotation-*"]
+      subjects:
+        - kind: Group
+          name: "developers"
+        - kind: ServiceAccount
+          name: "dev-workload"
+
+    # Platform team has broader access in production
+    - namespaces: ["production", "prod-*"]
+      plugins: ["cpu-manager", "memory-manager", "device-*", "network-policy"]
+      subjects:
+        - kind: Group
+          name: "platform-team"
+        - kind: User
+          name: "sre-team"
+
+    # Security team can use security-related plugins everywhere
+    - namespaces: ["*"]
+      plugins: ["security-*", "audit-*", "compliance-*"]
+      subjects:
+        - kind: Group
+          name: "security-team"
+
+    # System pods have special privileges
+    - namespaces: ["kube-system"]
+      plugins: ["*"]
+      subjects:
+        - kind: ServiceAccount
+          name: "system:admin"
+        - kind: Group
+          name: "system:masters"
