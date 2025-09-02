@@ -31,7 +31,7 @@ func GetContainerCgroupsV2AbsPath(container *api.Container) string {
 	}
 
 	cgroupPath := container.Linux.CgroupsPath
-	return getCGroupsV2Path(cgroupPath)
+	return getCGroupsV2PathForContainer(cgroupPath)
 }
 
 // GetPodCgroupsV2AbsPath returns the absolute path to the cgroup v2 directory for a pod sandbox.
@@ -44,14 +44,13 @@ func GetPodCgroupsV2AbsPath(pod *api.PodSandbox) string {
 	}
 
 	cgroupPath := pod.Linux.CgroupsPath
-	return getCGroupsV2Path(cgroupPath)
+	return getCGroupsV2PathForPod(cgroupPath)
 }
 
 // Helper functions
 
-// getCGroupsV2Path helper
-// Same implementation for both sandbox and container
-func getCGroupsV2Path(cgroupPath string) string {
+// getCGroupsV2PathForContainer helper for container paths
+func getCGroupsV2PathForContainer(cgroupPath string) string {
 	if filepath.IsAbs(cgroupPath) {
 		return cgroupPath
 	}
@@ -63,7 +62,24 @@ func getCGroupsV2Path(cgroupPath string) string {
 	}
 
 	// Try to resolve the path using different cgroup drivers
-	resolvedPath := resolveCgroupPath(cgroupV2Root, cgroupPath)
+	resolvedPath := resolveCgroupPath(cgroupV2Root, cgroupPath, true) // true = isContainer
+	return resolvedPath
+}
+
+// getCGroupsV2PathForPod helper for pod paths
+func getCGroupsV2PathForPod(cgroupPath string) string {
+	if filepath.IsAbs(cgroupPath) {
+		return cgroupPath
+	}
+
+	cgroupV2Root := getCgroupV2Root()
+	if cgroupV2Root == "" {
+		// Fallback to default cgroup v2 mount point
+		cgroupV2Root = "/sys/fs/cgroup"
+	}
+
+	// Try to resolve the path using different cgroup drivers
+	resolvedPath := resolveCgroupPath(cgroupV2Root, cgroupPath, false) // false = isPod
 	return resolvedPath
 }
 
@@ -116,9 +132,9 @@ func isCgroupV2Mount(path string) bool {
 
 // resolveCgroupPath resolves the cgroup path by trying cgroupfs and systemd cgroup drivers
 // It first detects if the path is systemd-style, then applies conversion
-func resolveCgroupPath(cgroupRoot, cgroupPath string) string {
+func resolveCgroupPath(cgroupRoot, cgroupPath string, isContainer bool) string {
 	if isSystemdPath(cgroupPath) {
-		return convertSystemdPath(cgroupRoot, cgroupPath)
+		return convertSystemdPath(cgroupRoot, cgroupPath, isContainer)
 	}
 
 	// For non-systemd paths, use cgroupfs driver (direct filesystem path)
@@ -155,13 +171,15 @@ func isSystemdPath(path string) bool {
 }
 
 // convertSystemdPath converts systemd slice notation to filesystem path
-func convertSystemdPath(cgroupRoot, systemdPath string) string {
+func convertSystemdPath(cgroupRoot, systemdPath string, isContainer bool) string {
 	// Convert systemd slice notation to filesystem path
 	// Examples:
-	// 1. "kubepods-besteffort-pod123.slice/crio:container456"
-	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
-	// 2. "kubepods-besteffort-pod123.slice:crio:container456"
-	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
+	// 1. "kubepods-besteffort-pod123.slice/crio:container456" (container)
+	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456.scope"
+	// 2. "kubepods-besteffort-pod123.slice:crio:container456" (container)
+	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456.scope"
+	// 3. "kubepods-besteffort-pod123.slice" (pod)
+	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice"
 
 	var pathComponents []string
 
@@ -181,6 +199,12 @@ func convertSystemdPath(cgroupRoot, systemdPath string) string {
 			// Process the part after the colon
 			containerParts := strings.Split(afterColon, ":")
 			containerName := strings.Join(containerParts, "-")
+			
+			// Add .scope suffix for containers
+			if isContainer {
+				containerName += ".scope"
+			}
+			
 			pathComponents = append(pathComponents, containerName)
 			
 			return filepath.Join(cgroupRoot, filepath.Join(pathComponents...))
@@ -197,6 +221,12 @@ func convertSystemdPath(cgroupRoot, systemdPath string) string {
 			containerName := strings.Join(colonParts[1:], ":")
 			// Convert colons to dashes in container name
 			containerName = strings.ReplaceAll(containerName, ":", "-")
+			
+			// Add .scope suffix for containers
+			if isContainer {
+				containerName += ".scope"
+			}
+			
 			pathComponents = append(pathComponents, sliceName+"-"+containerName)
 		} else if strings.HasSuffix(part, ".slice") {
 			// Handle slice hierarchy expansion

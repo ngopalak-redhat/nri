@@ -16,6 +16,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/containerd/nri/pkg/api"
@@ -83,7 +84,7 @@ func TestGetCgroupsV2AbsPath(t *testing.T) {
 					CgroupsPath: "system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456",
 				},
 			},
-			expected:    "/sys/fs/cgroup/system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456",
+			expected:    "/sys/fs/cgroup/system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456.scope",
 			description: "should handle systemd-style paths with proper colon conversion",
 		},
 		{
@@ -116,7 +117,7 @@ func TestGetCgroupsV2AbsPath(t *testing.T) {
 					CgroupsPath: "machine.slice/crio:container:runtime",
 				},
 			},
-			expected:    "/sys/fs/cgroup/machine.slice/crio-container-runtime",
+			expected:    "/sys/fs/cgroup/machine.slice/crio-container-runtime.scope",
 			description: "should handle complex systemd paths with multiple colons",
 		},
 		{
@@ -127,7 +128,7 @@ func TestGetCgroupsV2AbsPath(t *testing.T) {
 					CgroupsPath: "kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice:crio:656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
 				},
 			},
-			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307.scope",
 			description: "should handle real-world slice:container format without directory separator",
 		},
 	}
@@ -289,7 +290,7 @@ func TestConvertSystemdPath(t *testing.T) {
 			name:        "real-world crio systemd path",
 			cgroupRoot:  "/sys/fs/cgroup",
 			systemdPath: "kubepods-besteffort-pod7b65ebd5_94f2_4f8e_9b82_10d79e214db2.slice/crio:d7b85095530d61a998543f5cb12c079ac23547fff116cdf20c39f8be5536fd05",
-			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod7b65ebd5_94f2_4f8e_9b82_10d79e214db2.slice/crio-d7b85095530d61a998543f5cb12c079ac23547fff116cdf20c39f8be5536fd05",
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod7b65ebd5_94f2_4f8e_9b82_10d79e214db2.slice/crio-d7b85095530d61a998543f5cb12c079ac23547fff116cdf20c39f8be5536fd05.scope",
 		},
 		{
 			name:        "systemd slice hierarchy expansion",
@@ -301,7 +302,7 @@ func TestConvertSystemdPath(t *testing.T) {
 			name:        "containerd systemd path with colons",
 			cgroupRoot:  "/sys/fs/cgroup",
 			systemdPath: "system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456",
-			expected:    "/sys/fs/cgroup/system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456",
+			expected:    "/sys/fs/cgroup/system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456.scope",
 		},
 		{
 			name:        "systemd path without colons",
@@ -313,21 +314,23 @@ func TestConvertSystemdPath(t *testing.T) {
 			name:        "multiple colon conversion",
 			cgroupRoot:  "/sys/fs/cgroup",
 			systemdPath: "machine.slice/crio:runtime:container123",
-			expected:    "/sys/fs/cgroup/machine.slice/crio-runtime-container123",
+			expected:    "/sys/fs/cgroup/machine.slice/crio-runtime-container123.scope",
 		},
 		{
 			name:        "slice followed directly by colons",
 			cgroupRoot:  "/sys/fs/cgroup",
 			systemdPath: "kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice:crio:656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
-			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307.scope",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := convertSystemdPath(tt.cgroupRoot, tt.systemdPath)
+			// Test as container path (most test cases expect .scope suffix)
+			isContainer := strings.Contains(tt.systemdPath, ":")
+			result := convertSystemdPath(tt.cgroupRoot, tt.systemdPath, isContainer)
 			if result != tt.expected {
-				t.Errorf("convertSystemdPath(%s, %s) = %s, expected %s", tt.cgroupRoot, tt.systemdPath, result, tt.expected)
+				t.Errorf("convertSystemdPath(%s, %s, %v) = %s, expected %s", tt.cgroupRoot, tt.systemdPath, isContainer, result, tt.expected)
 			}
 		})
 	}
@@ -365,7 +368,7 @@ func TestResolveCgroupPath(t *testing.T) {
 			name:       "systemd path conversion",
 			cgroupRoot: tmpDir,
 			cgroupPath: "system.slice/containerd.service/kubepods-burstable-pod123.slice/cri-containerd:container456",
-			expected:   filepath.Join(tmpDir, "system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456"),
+			expected:   filepath.Join(tmpDir, "system.slice/containerd.service/kubepods.slice/kubepods-burstable.slice/kubepods-burstable-pod123.slice/cri-containerd-container456.scope"),
 		},
 		{
 			name:       "non-existing path falls back to cgroupfs",
@@ -377,9 +380,11 @@ func TestResolveCgroupPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := resolveCgroupPath(tt.cgroupRoot, tt.cgroupPath)
+			// Test as container path for systemd paths (those with colons)
+			isContainer := strings.Contains(tt.cgroupPath, ":")
+			result := resolveCgroupPath(tt.cgroupRoot, tt.cgroupPath, isContainer)
 			if result != tt.expected {
-				t.Errorf("resolveCgroupPath(%s, %s) = %s, expected %s", tt.cgroupRoot, tt.cgroupPath, result, tt.expected)
+				t.Errorf("resolveCgroupPath(%s, %s, %v) = %s, expected %s", tt.cgroupRoot, tt.cgroupPath, isContainer, result, tt.expected)
 			}
 		})
 	}
