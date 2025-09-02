@@ -157,12 +157,38 @@ func isSystemdPath(path string) bool {
 // convertSystemdPath converts systemd slice notation to filesystem path
 func convertSystemdPath(cgroupRoot, systemdPath string) string {
 	// Convert systemd slice notation to filesystem path
-	// Example: "kubepods-besteffort-pod123.slice/crio:container456"
-	// becomes: "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
+	// Examples:
+	// 1. "kubepods-besteffort-pod123.slice/crio:container456"
+	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
+	// 2. "kubepods-besteffort-pod123.slice:crio:container456"
+	//    -> "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-pod123.slice/crio-container456"
 
-	parts := strings.Split(systemdPath, "/")
 	var pathComponents []string
 
+	// First, check if we have a slice name followed directly by colons (format 2)
+	if strings.Contains(systemdPath, ":") {
+		// Find the first colon
+		colonIndex := strings.Index(systemdPath, ":")
+		beforeColon := systemdPath[:colonIndex]
+		afterColon := systemdPath[colonIndex+1:]
+
+		// If the part before colon ends with .slice, treat it as a slice
+		if strings.HasSuffix(beforeColon, ".slice") {
+			// Expand the slice hierarchy
+			expandedSlices := expandSliceHierarchy(beforeColon)
+			pathComponents = append(pathComponents, expandedSlices...)
+
+			// Process the part after the colon
+			containerParts := strings.Split(afterColon, ":")
+			containerName := strings.Join(containerParts, "-")
+			pathComponents = append(pathComponents, containerName)
+			
+			return filepath.Join(cgroupRoot, filepath.Join(pathComponents...))
+		}
+	}
+
+	// Original logic for paths with directory separators
+	parts := strings.Split(systemdPath, "/")
 	for _, part := range parts {
 		if strings.Contains(part, ":") {
 			// Handle colon-separated components (like "crio:container456")

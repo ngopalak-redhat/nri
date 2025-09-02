@@ -119,6 +119,17 @@ func TestGetCgroupsV2AbsPath(t *testing.T) {
 			expected:    "/sys/fs/cgroup/machine.slice/crio-container-runtime",
 			description: "should handle complex systemd paths with multiple colons",
 		},
+		{
+			name: "container with real-world slice:container format",
+			container: &api.Container{
+				Id: "test-container",
+				Linux: &api.LinuxContainer{
+					CgroupsPath: "kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice:crio:656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
+				},
+			},
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
+			description: "should handle real-world slice:container format without directory separator",
+		},
 	}
 
 	for _, tt := range tests {
@@ -303,6 +314,12 @@ func TestConvertSystemdPath(t *testing.T) {
 			cgroupRoot:  "/sys/fs/cgroup",
 			systemdPath: "machine.slice/crio:runtime:container123",
 			expected:    "/sys/fs/cgroup/machine.slice/crio-runtime-container123",
+		},
+		{
+			name:        "slice followed directly by colons",
+			cgroupRoot:  "/sys/fs/cgroup",
+			systemdPath: "kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice:crio:656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
+			expected:    "/sys/fs/cgroup/kubepods.slice/kubepods-besteffort.slice/kubepods-besteffort-podf8952339_1101_46ca_948d_1906de5016b8.slice/crio-656a5b06e0c7490f743b43c20cb984b9a5fd79ea0e49211d84ee0ec3d7ed0307",
 		},
 	}
 
