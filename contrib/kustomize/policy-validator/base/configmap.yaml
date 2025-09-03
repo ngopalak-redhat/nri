@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nri-policy-validator-config
+data:
+  validation.yaml: |
+    # NRI Validation Policy Configuration
+    # RBAC-style access control policies
+    policy:
+      defaultDeny: true  # Opt-in model - explicit permission required
+
+      rules:
+        # Development teams can use any plugins in dev namespaces
+        - namespaces: ["dev-*"]
+          plugins: ["*"]
+          subjects:
+            - kind: User
+              name: "developer-team"
+            - kind: ServiceAccount
+              name: "dev-runner"
+
+        # Platform team has limited access in production
+        - namespaces: ["production"]
+          plugins: ["cpu-manager", "memory-manager"]
+          subjects:
+            - kind: Group
+              name: "platform-team"
+
+        # Security team can use security plugins everywhere
+        - namespaces: ["*"]
+          plugins: ["security-*", "audit-*", "compliance-*"]
+          subjects:
+            - kind: Group
+              name: "security-team"
+
+        # System pods have special privileges
+        - namespaces: ["kube-system"]
+          plugins: ["*"]
+          subjects:
+            - kind: ServiceAccount
+              name: "system:admin"
+            - kind: Group
+              name: "system:masters"
+
+    # Technical mutation restrictions
+    restrictions:
+      defaultAction: allow  # Allow mutations unless explicitly denied
+      
+      # Global restrictions that apply to all plugins
+      globalRestrictions:
+        # Block dangerous mutations that could compromise security
+        - action: deny
+          capabilities:
+            - namespaces    # Block all namespace modifications
+            - seccomp      # Block seccomp policy changes
+            - hooks        # Block OCI hook injection
+
+      # Global pod restrictions
+      globalPodRestrictions:
+        # Protect system namespaces and critical pods
+        - action: deny
+          selector:
+            namespaces: ["kube-system", "kube-public"]
+            labels:
+              "security.containerd.io/protected": "true"
+
+      # Plugin-specific restrictions
+      pluginRestrictions:
+        # Untrusted plugins can only make safe changes
+        - pluginPattern: "untrusted-*"
+          mutationRestrictions:
+            - action: allow
+              capabilities:
+                - annotations
+                - env
+                - args
+          podRestrictions:
+            - action: allow
+              selector:
+                namespaces: ["sandbox-*", "test-*"]
+        
+        # CPU manager can only modify CPU resources
+        - pluginPattern: "cpu-manager"
+          mutationRestrictions:
+            - action: allow
+              capabilities:
+                - cpu
+                - resources
+          podRestrictions:
+            - action: deny
+              selector:
+                labels:
+                  "workload.type": "system"

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nri-plugin-policy-validator
+spec:
+  template:
+    spec:
+      containers:
+        - name: plugin
+          image: plugin:latest
+          args:
+            - "-idx"
+            - "99"  # Run late to validate other plugins' changes
+            - "-config"
+            - "/etc/nri/validation.yaml"
+            - "-verbose"
+          resources:
+            requests:
+              cpu: "5m"
+              memory: "10Mi"
+            limits:
+              cpu: "50m"
+              memory: "50Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534  # nobody
+          volumeMounts:
+            - name: nri-socket
+              mountPath: /var/run/nri/nri.sock
+            - name: config
+              mountPath: /etc/nri
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: nri-socket
+          hostPath:
+            path: /var/run/nri/nri.sock
+            type: Socket
+        - name: config
+          configMap:
+            name: nri-policy-validator-config
+        - name: tmp
+          emptyDir: {}

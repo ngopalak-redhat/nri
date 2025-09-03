@@ -14,7 +14,11 @@ The validation policy system provides two levels of control:
 ### Configuration Examples
 
 - **`validation-policy.yaml`**: Complete example configuration showing both policy rules and technical restrictions
-- **`policy-validator-plugin/main.go`**: Example validator plugin that enforces the policies
+
+### Plugin Implementation
+
+The policy validator plugin is available in the main plugins directory:
+- **`plugins/policy-validator/`**: Complete implementation of the policy validator plugin
 
 ### Key Features
 
@@ -72,8 +76,8 @@ restrictions:
 
 ```bash
 # Build the plugin
-cd examples/policy-validator-plugin
-go build -o policy-validator
+cd plugins/policy-validator
+go build -o policy-validator policy-validator.go
 
 # Run the plugin
 ./policy-validator -config /etc/nri/validation.yaml

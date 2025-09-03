@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nri-policy-validator-config
+data:
+  validation.yaml: |
+    # NRI Validation Policy Configuration - Development Environment
+    # More permissive settings for development and testing
+    
+    # RBAC-style access control policies
+    policy:
+      defaultDeny: false  # Allow by default in development
+
+      rules:
+        # All users can use most plugins in dev namespaces
+        - namespaces: ["*"]
+          plugins: ["*"]
+          subjects:
+            - kind: User
+              name: "*"
+            - kind: ServiceAccount
+              name: "*"
+            - kind: Group
+              name: "*"
+
+        # Still protect kube-system
+        - namespaces: ["kube-system"]
+          plugins: ["system-*", "core-*"]
+          subjects:
+            - kind: ServiceAccount
+              name: "system:admin"
+
+    # Technical mutation restrictions - minimal for development
+    restrictions:
+      defaultAction: allow
+      
+      # Only block the most dangerous mutations
+      globalRestrictions:
+        - action: deny
+          capabilities:
+            - hooks        # Still block OCI hook injection
+
+      # Protect only critical system pods
+      globalPodRestrictions:
+        - action: deny
+          selector:
+            namespaces: ["kube-system"]
+            labels:
+              "component": "kube-apiserver"

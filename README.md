@@ -432,6 +432,9 @@ overlays for deploying the sample are available at
 [contrib/kustomize](contrib/kustomize). See plugin-specific documentation for
 detailed examples.
 
+The [policy-validator](contrib/kustomize/policy-validator) plugin provides validation
+policies for container adjustments made by other NRI plugins.
+
 > [!CAUTION]
 > Use at your own risk. The kustomize overlays provided in this repository is
 > offered as a convenience for testing and demonstration purposes.
