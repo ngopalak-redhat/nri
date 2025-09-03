@@ -29,7 +29,7 @@ import (
 type pluginPolicyValidator struct {
 	stub              stub.Stub
 	mask              api.EventMask
-	validationManager *api.ValidationManager
+	validationManager *ValidationManager
 }
 
 var (
@@ -45,18 +45,18 @@ func main() {
 	p := &pluginPolicyValidator{}
 
 	// Load validation configuration
-	config, err := api.LoadConfigFromFile(*configPath)
+	config, err := LoadConfigFromFile(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load validation config: %v", err)
 	}
 
 	// Validate configuration
-	if err := api.ValidateConfig(config); err != nil {
+	if err := ValidateConfig(config); err != nil {
 		log.Fatalf("Invalid validation config: %v", err)
 	}
 
 	// Create validation manager
-	p.validationManager, err = api.NewValidationManager(*config)
+	p.validationManager, err = NewValidationManager(*config)
 	if err != nil {
 		log.Fatalf("Failed to create validation manager: %v", err)
 	}
@@ -125,12 +125,12 @@ func (p *pluginPolicyValidator) ValidateContainerAdjustment(ctx context.Context,
 }
 
 // extractSubjectFromPod extracts subject information from pod metadata
-func extractSubjectFromPod(pod *api.PodSandbox) *api.PolicySubject {
+func extractSubjectFromPod(pod *api.PodSandbox) *PolicySubject {
 	annotations := pod.GetAnnotations()
 
 	// Check for user annotation
 	if user, exists := annotations["nri.io/user"]; exists {
-		return &api.PolicySubject{
+		return &PolicySubject{
 			Kind: "User",
 			Name: user,
 		}
@@ -138,7 +138,7 @@ func extractSubjectFromPod(pod *api.PodSandbox) *api.PolicySubject {
 
 	// Check for group annotation
 	if group, exists := annotations["nri.io/group"]; exists {
-		return &api.PolicySubject{
+		return &PolicySubject{
 			Kind: "Group",
 			Name: group,
 		}
@@ -151,7 +151,7 @@ func extractSubjectFromPod(pod *api.PodSandbox) *api.PolicySubject {
 		serviceAccount = sa
 	}
 
-	return &api.PolicySubject{
+	return &PolicySubject{
 		Kind: "ServiceAccount",
 		Name: serviceAccount,
 	}
