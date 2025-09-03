@@ -21,7 +21,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/containerd/nri/pkg/api"
 	"github.com/containerd/nri/pkg/stub"
@@ -62,7 +61,7 @@ func main() {
 	}
 
 	// We only need to handle validation events
-	p.mask = stub.Events(stub.ValidateContainerAdjustmentEvent)
+	p.mask = api.EventMask(1 << (api.Event_VALIDATE_CONTAINER_ADJUSTMENT - 1))
 
 	if p.stub, err = stub.New(p, stub.WithPluginName(pluginName), stub.WithPluginIdx(pluginIdx)); err != nil {
 		log.Fatalf("failed to create plugin stub: %v", err)
@@ -74,7 +73,7 @@ func main() {
 	}
 }
 
-func (p *plugin) Configure(_ context.Context, config, runtime, version string) (stub.EventMask, error) {
+func (p *plugin) Configure(_ context.Context, config, runtime, version string) (api.EventMask, error) {
 	log.Printf("Got configuration data: %q from runtime %s %s", config, runtime, version)
 	return p.mask, nil
 }
@@ -89,7 +88,7 @@ func (p *plugin) Shutdown(_ context.Context) error {
 	return nil
 }
 
-func (p *plugin) ValidateContainerAdjustment(ctx context.Context, req *api.ValidateContainerAdjustmentRequest) (*api.ValidateContainerAdjustmentResponse, error) {
+func (p *plugin) ValidateContainerAdjustment(ctx context.Context, req *api.ValidateContainerAdjustmentRequest) error {
 	pod := req.GetPod()
 	container := req.GetContainer()
 	
@@ -107,20 +106,15 @@ func (p *plugin) ValidateContainerAdjustment(ctx context.Context, req *api.Valid
 	err := p.validationManager.ValidateContainerAdjustment(ctx, req, subject)
 	if err != nil {
 		log.Printf("Validation failed for container %s: %v", container.GetName(), err)
-		return &api.ValidateContainerAdjustmentResponse{
-			Reject: true,
-			Reason: fmt.Sprintf("Policy validation failed: %v", err),
-		}, nil
+		return fmt.Errorf("policy validation failed: %w", err)
 	}
 	
 	log.Printf("Validation passed for container %s", container.GetName())
-	return &api.ValidateContainerAdjustmentResponse{
-		Reject: false,
-	}, nil
+	return nil
 }
 
 // extractSubjectFromPod extracts subject information from pod metadata
-func extractSubjectFromPod(pod *api.Pod) *api.PolicySubject {
+func extractSubjectFromPod(pod *api.PodSandbox) *api.PolicySubject {
 	annotations := pod.GetAnnotations()
 	
 	// Check for user annotation

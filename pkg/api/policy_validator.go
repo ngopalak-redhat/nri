@@ -19,7 +19,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -304,6 +303,7 @@ func ValidateExamplePolicy() error {
 	validator := NewPolicyBasedValidator(examplePolicy, &restrictionsConfig)
 	
 	// Test cases could be added here
+	_ = validator // Avoid unused variable error
 	fmt.Printf("Policy validator created successfully with %d rules\n", len(examplePolicy.Rules))
 	fmt.Printf("Restrictions validator created with %d plugin restrictions\n", len(restrictionsConfig.PluginRestrictions))
 	

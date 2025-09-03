@@ -175,7 +175,7 @@ func (rv *RestrictionsValidator) validatePluginMutations(pluginName string, req 
 }
 
 // validatePodAccess validates that a plugin can access the specified pod
-func (rv *RestrictionsValidator) validatePodAccess(pluginName string, pod *Pod) error {
+func (rv *RestrictionsValidator) validatePodAccess(pluginName string, pod *PodSandbox) error {
 	// Check global pod restrictions
 	for _, restriction := range rv.config.GlobalPodRestrictions {
 		if err := rv.checkPodRestriction(restriction, pod); err != nil {
@@ -245,10 +245,10 @@ func (rv *RestrictionsValidator) extractMutationCapabilities(adjust *ContainerAd
 			if linux.Resources.Cpu != nil {
 				capabilities = append(capabilities, MutationCPU)
 			}
-			if linux.Resources.BlockioClass != "" {
+			if linux.Resources.BlockioClass != nil && linux.Resources.BlockioClass.GetValue() != "" {
 				capabilities = append(capabilities, MutationBlockIO)
 			}
-			if linux.Resources.RdtClass != "" {
+			if linux.Resources.RdtClass != nil && linux.Resources.RdtClass.GetValue() != "" {
 				capabilities = append(capabilities, MutationRDT)
 			}
 			if linux.Resources.Unified != nil && len(linux.Resources.Unified) > 0 {
@@ -256,9 +256,8 @@ func (rv *RestrictionsValidator) extractMutationCapabilities(adjust *ContainerAd
 			}
 		}
 		
-		if linux.SeccompProfile != nil {
-			capabilities = append(capabilities, MutationSeccomp)
-		}
+		// SeccompProfile is only in LinuxContainer, not LinuxContainerAdjustment
+		// We'll check for seccomp via other means if needed
 		
 		if linux.Namespaces != nil && len(linux.Namespaces) > 0 {
 			capabilities = append(capabilities, MutationNamespaces)
@@ -291,7 +290,7 @@ func (rv *RestrictionsValidator) checkMutationRestriction(restriction MutationRe
 }
 
 // checkPodRestriction checks if pod access is allowed by a restriction
-func (rv *RestrictionsValidator) checkPodRestriction(restriction PodRestriction, pod *Pod) error {
+func (rv *RestrictionsValidator) checkPodRestriction(restriction PodRestriction, pod *PodSandbox) error {
 	matches := rv.podMatches(restriction.Selector, pod)
 	
 	switch restriction.Action {
@@ -324,7 +323,7 @@ func (rv *RestrictionsValidator) findPluginRestrictions(pluginName string) []Plu
 }
 
 // podMatches checks if a pod matches a selector
-func (rv *RestrictionsValidator) podMatches(selector PodSelector, pod *Pod) bool {
+func (rv *RestrictionsValidator) podMatches(selector PodSelector, pod *PodSandbox) bool {
 	// Check namespace
 	if len(selector.Namespaces) > 0 {
 		namespaceMatches := false
