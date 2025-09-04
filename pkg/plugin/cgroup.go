@@ -61,10 +61,6 @@ func GetPodCgroupsV2AbsPath(pod *api.PodSandbox) string {
 
 // getCGroupsV2PathForContainer helper for container paths
 func getCGroupsV2PathForContainer(cgroupPath string) string {
-	if filepath.IsAbs(cgroupPath) {
-		return cgroupPath
-	}
-
 	cgroupV2Root := getCgroupV2Root()
 	if cgroupV2Root == "" {
 		// Fallback to default cgroup v2 mount point
@@ -77,10 +73,6 @@ func getCGroupsV2PathForContainer(cgroupPath string) string {
 
 // getCGroupsV2PathForPodWithRuntime helper for pod paths with runtime detection
 func getCGroupsV2PathForPodWithRuntime(cgroupPath string, shouldAddScope bool) string {
-	if filepath.IsAbs(cgroupPath) {
-		return cgroupPath
-	}
-
 	cgroupV2Root := getCgroupV2Root()
 	if cgroupV2Root == "" {
 		// Fallback to default cgroup v2 mount point
@@ -139,6 +131,11 @@ func isCgroupV2Mount(path string) bool {
 // resolveCgroupPath resolves the cgroup path by trying cgroupfs and systemd cgroup drivers
 // It first detects if the path is systemd-style, then applies conversion
 func resolveCgroupPath(cgroupRoot, cgroupPath string, isContainer bool) string {
+	// If the path already starts with the cgroup root, return it as-is
+	if strings.HasPrefix(cgroupPath, cgroupRoot) {
+		return cgroupPath
+	}
+
 	if isSystemdPath(cgroupPath) {
 		return convertSystemdPath(cgroupRoot, cgroupPath, isContainer)
 	}
